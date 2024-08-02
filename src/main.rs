@@ -1,5 +1,5 @@
+use std::collections::HashMap;
 use std::io;
-
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -9,6 +9,7 @@ mod parser;
 
 async fn process(mut socket: TcpStream) {
     let mut buf = [0; 512];
+    let mut storage = HashMap::new();
 
     loop {
         let count = socket.read(&mut buf).await.unwrap();
@@ -21,11 +22,23 @@ async fn process(mut socket: TcpStream) {
 
         match bulk_str.cmd.as_str() {
             "echo" => {
-                let out = format!("+{}\r\n", bulk_str.value);
-                socket.write(out.as_bytes()).await.unwrap();
+                let out = format!("+{}\r\n", bulk_str.value1);
+                socket.write_all(out.as_bytes()).await.unwrap();
             }
             "ping" => {
-                socket.write(b"+PONG\r\n").await.unwrap();
+                socket.write_all(b"+PONG\r\n").await.unwrap();
+            }
+            "set" => {
+                storage.insert(bulk_str.value1.clone(), bulk_str.value2.clone());
+                socket.write_all(b"+OK\r\n").await.unwrap();
+            }
+            "get" => {
+                if let Some(value) = storage.get(&bulk_str.value1) {
+                    let out = format!("${}\r\n{}\r\n", value.len(), value);
+                    socket.write(out.as_bytes()).await.unwrap();
+                } else {
+                    socket.write(b"$-1\r\n").await.unwrap();
+                }
             }
             _ => eprintln!("Unknown command"),
         }
